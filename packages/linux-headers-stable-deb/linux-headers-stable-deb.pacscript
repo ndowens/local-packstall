@@ -1,0 +1,10 @@
+name="linux-headers-stable-deb"
+gives="linux-headers-6.7.1-060701"
+pkgver="6.7.1"
+buildver="6.7.1-060701.202401201133"
+url="https://kernel.ubuntu.com/~kernel-ppa/mainline/v${pkgver}/amd64/${gives}_${buildver}_all.deb"
+pkgdesc="Ubuntu Linux stable kernel (Headers)"
+hash="79890d5bed31379456a9488271f4a485405d06464c1fae3fc611615ed6898ace"
+arch=('any')
+maintainer="Oren Klopfer <oren@taumoda.com>"
+repology=("project: linux" "repo: distrowatch")

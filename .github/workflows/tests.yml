@@ -1,0 +1,216 @@
+name: tests
+on:
+  pull_request: {}
+  workflow_dispatch:
+    inputs:
+      debug_enabled:
+        description: 'Run the build with tmate debugging enabled (https://github.com/marketplace/actions/debugging-with-tmate)'
+        required: false
+        default: false
+defaults:
+  run:
+    shell: bash
+jobs:
+  test-on-ubuntu:
+    strategy:
+      matrix:
+        OS: ["ubuntu:latest", "ubuntu:devel", "ubuntu:rolling"]
+        PACSTALL_VERSION: ["master", "develop"]
+      fail-fast: false
+    runs-on: ubuntu-latest
+    container:
+      image: ${{ matrix.OS }}
+      env:
+        TERM: xterm
+        shell: bash
+        USER: dio
+        LOGNAME: dio
+        DEBIAN_FRONTEND: noninteractive
+    steps:
+      - name: Setup tmate session
+        uses: mxschmitt/action-tmate@v3
+        if: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.debug_enabled }}
+      - id: checkout
+        uses: actions/checkout@v4
+      - id: paths
+        uses: dorny/paths-filter@v2
+        with:
+          filters: |
+            pacscripts:
+              - 'packages/*/*.pacscript'
+      - id: files
+        uses: masesgroup/retrieve-changed-files@v3
+      - name: Check for Pacscript changes
+        run: |
+          touch .no-pacscript-changes
+          for changed_file in ${{ steps.files.outputs.added_modified }}; do
+            if [[ ${changed_file} == *".pacscript" ]]; then
+              rm -f .no-pacscript-changes
+              break
+            fi
+          done
+      - name: Install System Utilities
+        if: steps.paths.outputs.pacscripts == 'true'
+        run: |
+          dpkg --add-architecture i386
+          dpkg --add-architecture arm64
+          sed -i 's/deb http/deb [arch=amd64\,i386] http/g' /etc/apt/sources.list
+          sed -e 's/amd64\,i386/arm64/g' -e 's/archive\.ubuntu/ports\.ubuntu/g' -e 's/security\.ubuntu/ports\.ubuntu/g' -e 's/\.com\/ubuntu/\.com\/ubuntu-ports/g' /etc/apt/sources.list | tee /etc/apt/sources.list.d/arm64.list
+          apt-get update
+          apt-get install apt-utils curl bash wget git sudo iputils-ping keyboard-configuration lsb-release desktop-file-utils -y
+          ln -fs /usr/share/zoneinfo/Africa/Libreville /etc/localtime
+      - name: Setup Test User
+        if: steps.paths.outputs.pacscripts == 'true'
+        run: |
+          useradd -rm -d /home/$USER -s /bin/bash -g root -G sudo -u 1001 $USER
+          sudo sed -i "s/%sudo\tALL=(ALL:ALL) ALL/%sudo\tALL=(ALL) NOPASSWD:ALL/g" /etc/sudoers
+          chown -R $USER /tmp
+          chmod -R 777 /tmp
+      - name: Installing Pacstall
+        if: steps.paths.outputs.pacscripts == 'true'
+        run: |
+          export SUDO_USER=$USER
+          curl -fsSL https://pacstall.dev/q/install\?dnt > pacstall-install.sh || curl -fsSL https://git.io/JsADh > pacstall-install.sh
+          chmod +x ./pacstall-install.sh
+          echo N\n | sudo -E ./pacstall-install.sh
+          rm ./pacstall-install.sh
+          pacstall -U pacstall ${{ matrix.PACSTALL_VERSION }}
+          ls -lad /tmp/pacstall
+        shell: sudo -E -u dio bash {0}
+        env:
+          SUDO_USER: dio
+      - name: Installing Packages
+        if: steps.paths.outputs.pacscripts == 'true'
+        run: |
+          export SUDO_USER=$USER
+          export DEBIAN_FRONTEND=noninteractive
+          export GITHUB_ACTIONS=true
+          for changed_file in ${{ steps.files.outputs.added_modified }}; do
+            if [[ ${changed_file} == *".pacscript" ]]; then
+              pacscript_file=`basename "${changed_file}"`
+              package_name="${pacscript_file/.pacscript/ }"
+              package_dir=`dirname "${changed_file}"`
+              echo "Running pacstall -I for ${package_name}..."
+              echo "pacstall -I ${package_name}"
+              pushd ${package_dir}
+              pacstall --disable-prompts -I ${pacscript_file} || exit 1
+              popd
+            fi
+          done
+        shell: sudo -E -u dio bash {0}
+        env:
+          DEBIAN_FRONTEND: noninteractive
+      - name: Uninstalling Packages
+        if: steps.paths.outputs.pacscripts == 'true'
+        run: |
+          export SUDO_USER=$USER
+          export DEBIAN_FRONTEND=noninteractive
+          export GITHUB_ACTIONS=true
+          for changed_file in $(pacstall -L); do
+              echo "Running pacstall -R for ${changed_file}..."
+              pacstall --disable-prompts -R ${changed_file} || exit 1
+          done
+        shell: sudo -E -u dio bash {0}
+        env:
+          DEBIAN_FRONTEND: noninteractive
+
+  test-on-debian:
+    strategy:
+      matrix:
+        OS: ["debian:stable", "debian:testing", "debian:unstable"]
+        PACSTALL_VERSION: ["master", "develop"]
+      fail-fast: false
+    runs-on: ubuntu-latest
+    container:
+      image: ${{ matrix.OS }}
+      env:
+        TERM: xterm
+        shell: bash
+        USER: dio
+        LOGNAME: dio
+        DEBIAN_FRONTEND: noninteractive
+    steps:
+      - name: Setup tmate session
+        uses: mxschmitt/action-tmate@v3
+        if: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.debug_enabled }}
+      - id: checkout
+        uses: actions/checkout@v4
+      - id: paths
+        uses: dorny/paths-filter@v2
+        with:
+          filters: |
+            pacscripts:
+              - 'packages/*/*.pacscript'
+      - id: files
+        uses: masesgroup/retrieve-changed-files@v3
+      - name: Check for Pacscript changes
+        run: |
+          touch .no-pacscript-changes
+          for changed_file in ${{ steps.files.outputs.added_modified }}; do
+            if [[ ${changed_file} == *".pacscript" ]]; then
+              rm -f .no-pacscript-changes
+              break
+            fi
+          done
+      - name: Install System Utilities
+        if: steps.paths.outputs.pacscripts == 'true'
+        run: |
+          dpkg --add-architecture i386
+          dpkg --add-architecture arm64
+          apt-get update
+          apt-get install apt-utils curl bash wget git sudo iputils-ping keyboard-configuration lsb-release desktop-file-utils -y
+          ln -fs /usr/share/zoneinfo/Africa/Libreville /etc/localtime
+      - name: Setup Test User
+        if: steps.paths.outputs.pacscripts == 'true'
+        run: |
+          useradd -rm -d /home/$USER -s /bin/bash -g root -G sudo -u 1001 $USER
+          sudo sed -i "s/%sudo\tALL=(ALL:ALL) ALL/%sudo\tALL=(ALL) NOPASSWD:ALL/g" /etc/sudoers
+          chown -R $USER /tmp
+          chmod -R 777 /tmp
+      - name: Installing Pacstall
+        if: steps.paths.outputs.pacscripts == 'true'
+        run: |
+          export SUDO_USER=$USER
+          curl -fsSL https://pacstall.dev/q/install\?dnt > pacstall-install.sh || curl -fsSL https://git.io/JsADh > pacstall-install.sh
+          chmod +x ./pacstall-install.sh
+          echo N\n | sudo -E ./pacstall-install.sh
+          rm ./pacstall-install.sh
+          pacstall -U pacstall ${{ matrix.PACSTALL_VERSION }}
+          ls -lad /tmp/pacstall
+        shell: sudo -E -u dio bash {0}
+        env:
+          SUDO_USER: dio
+      - name: Installing Packages
+        if: steps.paths.outputs.pacscripts == 'true'
+        run: |
+          export SUDO_USER=$USER
+          export DEBIAN_FRONTEND=noninteractive
+          export GITHUB_ACTIONS=true
+          for changed_file in ${{ steps.files.outputs.added_modified }}; do
+            if [[ ${changed_file} == *".pacscript" ]]; then
+              pacscript_file=`basename "${changed_file}"`
+              package_name="${pacscript_file/.pacscript/ }"
+              package_dir=`dirname "${changed_file}"`
+              echo "Running pacstall -I for ${package_name}..."
+              echo "pacstall -Il ${package_name}"
+              pushd ${package_dir}
+              pacstall --disable-prompts -I ${pacscript_file} || exit 1
+              popd
+            fi
+          done
+        shell: sudo -E -u dio bash {0}
+        env:
+          DEBIAN_FRONTEND: noninteractive
+      - name: Uninstalling Packages
+        if: steps.paths.outputs.pacscripts == 'true'
+        run: |
+          export SUDO_USER=$USER
+          export DEBIAN_FRONTEND=noninteractive
+          export GITHUB_ACTIONS=true
+          for changed_file in $(pacstall -L); do
+              echo "Running pacstall -R for ${changed_file}..."
+              pacstall --disable-prompts -R ${changed_file} || exit 1
+          done
+        shell: sudo -E -u dio bash {0}
+        env:
+          DEBIAN_FRONTEND: noninteractive

@@ -1,0 +1,9 @@
+name="dbeaver-ce-deb"
+pkgver="23.3.3"
+gives="dbeaver-ce"
+url="https://github.com/dbeaver/dbeaver/releases/download/${pkgver}/dbeaver-ce_${pkgver}_amd64.deb"
+pkgdesc="Free universal database tool and SQL client"
+hash="10d327a61e960961c0a3d5dd24ae94038d1249356ddd446fca110b9ef8143f37"
+arch=('amd64')
+repology=("project: dbeaver")
+maintainer="KwonNam Son <kwon37xi@gmail.com>"
